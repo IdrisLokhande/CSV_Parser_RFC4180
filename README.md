@@ -6,6 +6,7 @@ A Java implementation of RFC-4180 style parsing built using a FSM table.
 
 - RFC-4180 Compliant
 - Streaming Parser
+- Accepts any Reader that extends Java Reader class
 - Configurable Line-Ending Policy (LF-only, or normalise CR/CRLF to LF)
 - Configurable Whitespace Trimming
 - Fixed COMMA Delimiter as of now
