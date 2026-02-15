@@ -110,11 +110,11 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		String head = "------[STATE "+states[state]+"]------";
 		System.out.println(head);
 		System.out.println(
-                    "CURRENTLY READ CHARACTER: " + 
-			 (nextChar == -1 ? "EOF" : 
+			"CURRENTLY READ CHARACTER: " +
+			(nextChar == -1 ? "EOF" : 
 				(nextChar == '\r' ? "<CR>" : 
 					(nextChar == '\n' ? "<LF>" : "'" + (char)nextChar + "'")))
-		    + "\nCHARACTER CLASS: " + classes[ch]
+			+ "\nCHARACTER CLASS: " + classes[ch]
                 );
 		
 		System.out.println("\nCURRENT FIELD: [" + curr_field.toString().replace("\r", "<CR>").replace("\n", "<LF>") + "]");
@@ -122,8 +122,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		System.out.println("\nFIELDS:");
 		for(String field:fields){
 			System.out.println("[" + field.replace("\r", "<CR>").replace("\n", "<LF>") + "]");
-
-         	}
+		}
 
 		System.out.println("\nCURRENT RECORD READY? ["+(recReady || ch == 4)+"]");
 		
@@ -167,8 +166,8 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 	private void perform(int act){
 		// FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, EXPECT_LF = 4, DEAD = 5, DEAD? = 6
-        	// COMMA = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5
-        	// EMIT_FIELD = 0, EMIT_RECORD = 1, NO_OP = 2, THROW_ERROR = 3, APPEND = 4
+		// COMMA = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5
+		// EMIT_FIELD = 0, EMIT_RECORD = 1, NO_OP = 2, THROW_ERROR = 3, APPEND = 4
 
 		switch(act){
 			case EMIT_RECORD:
@@ -184,7 +183,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				curr_field.append((char)nextChar);
 				break;
 			case THROW_ERROR:
-                                throw new RuntimeException("Invalid CSV Format for Chosen Mode");
+				throw new RuntimeException("Invalid CSV Format for Chosen Mode");
 		}
 	}
 
@@ -237,17 +236,17 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			state = transition[state][ch];                        
 
 			if(recReady){
-                                recReady = false;
+				recReady = false;
 				nextChar = normalisedRead();
-                                state = FIELD_START;
-                                CSVRecord r = new CSVRecord(fields);
-                                fields = new ArrayList<>();
-                                return r;
-                        }
+				state = FIELD_START;
+				CSVRecord r = new CSVRecord(fields);
+				fields = new ArrayList<>();
+				return r;
+			}
 			
 			if(ch == EOF){
-                                break;
-                        }
+				break;
+			}
 
 			nextChar = normalisedRead();
 		}
@@ -260,5 +259,5 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		} // flush at EOF
 
 		throw new NoSuchElementException();
-        } 
+	} 
 }
