@@ -115,7 +115,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				(nextChar == '\r' ? "<CR>" : 
 					(nextChar == '\n' ? "<LF>" : "'" + (char)nextChar + "'")))
 			+ "\nCHARACTER CLASS: " + classes[ch]
-                );
+		);
 		
 		System.out.println("\nCURRENT FIELD: [" + curr_field.toString().replace("\r", "<CR>").replace("\n", "<LF>") + "]");
 		System.out.println("TOTAL FIELDS: " + fields.size());
