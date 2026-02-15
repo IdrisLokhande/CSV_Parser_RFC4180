@@ -31,6 +31,6 @@ I wanted to understand CSV Parsing. Even though it is simple, it still connects 
 ## Future Improvements
 
 - Custom Delimiters
-- Two-Phase Lexer (Tokenizer+Parser) in place of current single FSM
+- Two-Phase Arch (Tokenizer+Parser) in place of current single FSM
 - Benchmark Comparisons and more testing 
 
