@@ -7,10 +7,10 @@ A Java implementation of RFC-4180 style parsing built using a FSM table.
 - RFC-4180 Compliant
 - Streaming Parser
 - Accepts any Reader that extends Java Reader class
-- Configurable Line-Ending Policy (LF-only, or normalise CR/CRLF to LF)
+- Configurable Line-Ending Policy (LF-only, normalised CRLF-only to LF, normalised CR/CRLF to LF)
 - Configurable Whitespace Trimming
 - Fixed COMMA Delimiter as of now
-- Debuggable DFA (Deterministic Finite Automaton) Trace Mode
+- Debuggable FSM (Finite State Machine) Trace Mode
 
 ## Design
 
@@ -19,18 +19,18 @@ Line-ending normalisation and whitespace trimming both are handled in a safe man
 
 ## Configurable Options
 
-- `onlyLF`: Accept only LF line-endings
+- `model`: 0 for UNIX line endings (LF), 1 for WINDOWS line endings (CRLF), 2 for LENIENT mode (CR/CRLF)
 - `trimSpaces`: Trim leading+trailing spaces for both quoted/unquoted fields
-- `enableFSMTrace`: Output DFA state transitions for learning/debugging
+- `enableFSMTrace`: Output FSM state transitions for learning/debugging
 
 ## Status
 
-Solely an educational project as of now. Theory of Computation got me interested in making this.
-I wanted to understand CSV Parsing. Even though it is simple, it still connects many subfields of TCS.
+This is solely an educational project as of now. Theory of Computation had gotten me interested in making this.
+Weekly or monthly updates are scheduled.
 
 ## Future Improvements
 
 - Custom Delimiters
-- Two-Phase Arch (Tokenizer+Parser) in place of current single FSM
+- Two-Phase Architecture (Tokenizer+Parser) in place of current single FSM + hardcoded workarounds
 - Benchmark Comparisons and more testing 
 
