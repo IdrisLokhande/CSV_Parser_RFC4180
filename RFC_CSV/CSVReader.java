@@ -12,12 +12,15 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 
 public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
+	// For FSM Trace
+	private static final String[] modes = {"UNIX", "WINDOWS", "LENIENT"};
 	private static final String[] states = {"FIELD_START", "UNQUOTED", "QUOTED", "QUOTED_END", "DEAD"};
 	private static final String[] classes = {"COMMA", "QUOTE", "CR", "LF", "EOF", "OTHER"};
 	private static final String[] actions = {"EMIT_FIELD", "EMIT_RECORD", "NO_OP", "THROW_ERROR", "APPEND"};
 
 	private final Reader reader;	
 
+	// For Parsing CSV and Generating CSVRecords
 	private StringBuilder curr_field;
 	private List<String> fields;
 	private int state;
@@ -28,18 +31,21 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	private boolean finished;	
 	private int buffered = -2; // empty
 
-	// Delay
+	// Delay Commit
 	private int countTrailSpaces;
 
 	// Configurations
-	private boolean onlyLF;
+	private int mode;
 	private boolean enableFSMTrace;
 	private boolean trimSpaces;
 
+	// Modes, States, Classes and Actions
+	private static final int UNIX = 0, WINDOWS = 1, LENIENT = 2; 
 	private static final int FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, DEAD = 4;
 	private static final int COMMA = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5;
 	private static final int EMIT_FIELD = 0, EMIT_RECORD = 1, NO_OP = 2, THROW_ERROR = 3, APPEND = 4;
 
+	// Transition Function as Lookup Table
 	private static final int [][] transition = {
 		// FIELD_START
 		// COMMA,      QUOTE,        CR,         LF,           EOF,         OTHER
@@ -58,6 +64,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		{DEAD,         DEAD,        DEAD,     DEAD,           DEAD,         DEAD}
 	};
 
+	// Action Function as Lookup Table
 	private static final int [][] action = {
 		// FIELD_START
 		// COMMA,     QUOTE,          CR,           LF,           EOF,        OTHER
@@ -76,11 +83,11 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		{THROW_ERROR, THROW_ERROR,  THROW_ERROR,  THROW_ERROR,  THROW_ERROR, THROW_ERROR}
 	};
 
-	public CSVReader(Reader reader, boolean onlyLF, boolean trimSpaces,  boolean enableFSMTrace) throws IOException{
+	public CSVReader(Reader reader, int mode, boolean trimSpaces,  boolean enableFSMTrace){
 		this.reader = reader;
-		this.nextChar = reader.read();
+		this.nextChar = normalisedRead();
 		
-		this.onlyLF = onlyLF;
+		this.mode = mode;
 		this.trimSpaces = trimSpaces;
 		this.enableFSMTrace = enableFSMTrace;
 
@@ -91,7 +98,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		
 		this.curr_field = new StringBuilder(32);
 		this.fields = new ArrayList<>();
-		this.state = FIELD_START;
+		this.state = FIELD_START; // Starting state of FSM
 	}
 
 	@Override
@@ -105,12 +112,15 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
                 }
         }	
 
-	private void getDFATrace(){
+	private void getFSMTrace(){
 		int ch = inputClass(nextChar);
-		String head = "------[STATE "+states[state]+"]------";
-		System.out.println(head);
+		String line = "-------------------------------------------------";
+
+		System.out.println(line);
+		System.out.println("STATE: " + states[state] + "\nMODE: " + modes[mode]);
+
 		System.out.println(
-			"CURRENTLY READ CHARACTER: " +
+			"\nCURRENTLY READ CHARACTER: " +
 			(nextChar == -1 ? "EOF" : 
 				(nextChar == '\r' ? "<CR>" : 
 					(nextChar == '\n' ? "<LF>" : "'" + (char)nextChar + "'")))
@@ -120,17 +130,15 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		System.out.println("\nCURRENT FIELD: [" + curr_field.toString().replace("\r", "<CR>").replace("\n", "<LF>") + "]");
 		System.out.println("TOTAL FIELDS: " + fields.size());
 		System.out.println("\nFIELDS:");
+		if(fields.isEmpty()){
+			System.out.println("<EMPTY>");
+		}
 		for(String field:fields){
 			System.out.println("[" + field.replace("\r", "<CR>").replace("\n", "<LF>") + "]");
 		}
 
 		System.out.println("\nCURRENT RECORD READY? ["+(recReady || ch == 4)+"]");
-		
-		for(int i = 0; i<head.length(); i++){
-			System.out.print("-");
-		}
-		
-		System.out.print("\n");
+		System.out.println(line);
 	} 
 
 	private int inputClass(int c){
@@ -173,7 +181,6 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			case EMIT_RECORD:
 				recReady = true;
 			case EMIT_FIELD:
-				countTrailSpaces = 0;
 				fields.add(curr_field.toString());	
 				curr_field.setLength(0);
 				break;
@@ -194,69 +201,101 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 	@Override
 	public CSVRecord next() throws NoSuchElementException{
-		if(nextChar == -1 && state == FIELD_START){
-			throw new NoSuchElementException();
-		}
 		while(true){
+			// In Trim Mode, read but do not process space chars at FIELD_START
 			if(trimSpaces && nextChar == ' ' && state == FIELD_START){
 				nextChar = normalisedRead();
 				continue; 
 			}
+			// In Trim Mode, read but delay proccessing of trailing space chars due to ambiguity
 			if(trimSpaces && nextChar == ' ' && (state == UNQUOTED || state == QUOTED_END)){
 				countTrailSpaces++;
 				nextChar = normalisedRead();
 				continue;
 			}
+			
+			// normalise CR/CRLF to LF cases
+			if(mode == WINDOWS && nextChar == '\r' && state != QUOTED){
+                                // In Windows Mode, when CR is currently read,
+                                // throw error when lookahead is not LF,
+                                // else skip this CR and process lookahead LF
 
-			if(!onlyLF && nextChar == '\r' && state != QUOTED){
-				// normalise CR or CRLF to LF
 				int lookahead = normalisedRead();
 				
 				if(lookahead != '\n'){
-					buffered = lookahead;
+					perform(THROW_ERROR);
+				}else{
+					nextChar = lookahead;
 				}
-
-				nextChar = '\n';
+			}else if(mode == LENIENT && nextChar == '\r' && state != QUOTED){
+				// buffered is -2 when empty
+                                // In Lenient Mode, when CR is currently read,
+                                // if '\r\n' case, skip CR and process lookahead LF
+                                // else buffer X and set currently read CR to LF
+				// On next normalisedRead(), buffered X will be processed
+				// All this buffering is because read() is strictly one way
+	
+				int lookahead = normalisedRead();
+				
+				if(lookahead != '\n'){
+                                        buffered = lookahead;
+					nextChar = '\n';
+                                }else{
+                                        nextChar = lookahead;
+                                }
+			}else if(mode != UNIX && mode != WINDOWS && mode != LENIENT){
+				throw new IllegalArgumentException("Incorrect Reader Mode");
 			}
 
 			int ch = inputClass(nextChar);
 			int act = action[state][ch];
 			
+			// Delayed Commit before Performing Action when OTHER char encountered
 			if(ch == OTHER){
 				while(countTrailSpaces > 0){
 					curr_field.append(' ');
 					countTrailSpaces--;
 				}
+			}else{
+				countTrailSpaces = 0;
 			}
 						
 			perform(act);
 
-			if(enableFSMTrace) getDFATrace();
+			if(enableFSMTrace) getFSMTrace();
 
-			state = transition[state][ch];                        
+			state = transition[state][ch];                     
 
 			if(recReady){
 				recReady = false;
 				nextChar = normalisedRead();
 				state = FIELD_START;
+
+				// To deal with edge cases of the form "(...)     \r\n"
+				if(nextChar == -1){
+					finished = true;
+				}
+
 				CSVRecord r = new CSVRecord(fields);
 				fields = new ArrayList<>();
 				return r;
 			}
-			
-			if(ch == EOF){
-				break;
-			}
 
+			if(ch == EOF){
+                                finished = true ;
+                                break;
+                        }
+			
 			nextChar = normalisedRead();
 		}
 		
-		if(!fields.isEmpty()){
+		// Flush at EOF
+		// !fields.empty() guards against completely empty inputs
+		if(finished && !fields.isEmpty()){
 			CSVRecord r = new CSVRecord(fields);
 			fields = new ArrayList<>();
-			finished = true;
 			return r;
-		} // flush at EOF
+		}
 
 		throw new NoSuchElementException();
 	} 
