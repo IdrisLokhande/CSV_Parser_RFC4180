@@ -20,7 +20,6 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 	private final Reader reader;	
 
-	// For Parsing CSV and Generating CSVRecords
 	private StringBuilder curr_field;
 	private List<String> fields;
 	private int state;
@@ -39,7 +38,6 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	private boolean enableFSMTrace;
 	private boolean trimSpaces;
 
-	// Modes, States, Classes and Actions
 	private static final int UNIX = 0, WINDOWS = 1, LENIENT = 2; 
 	private static final int FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, DEAD = 4;
 	private static final int COMMA = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5;
@@ -173,7 +171,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	}
 
 	private void perform(int act){
-		// FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, EXPECT_LF = 4, DEAD = 5, DEAD? = 6
+		// FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, DEAD = 4
 		// COMMA = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5
 		// EMIT_FIELD = 0, EMIT_RECORD = 1, NO_OP = 2, THROW_ERROR = 3, APPEND = 4
 
@@ -231,7 +229,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				// buffered is -2 when empty
                                 // In Lenient Mode, when CR is currently read,
                                 // if '\r\n' case, skip CR and process lookahead LF
-                                // else buffer X and set currently read CR to LF
+                                // else if '\rX', buffer X and set currently read CR to LF
 				// On next normalisedRead(), buffered X will be processed
 				// All this buffering is because read() is strictly one way
 	
