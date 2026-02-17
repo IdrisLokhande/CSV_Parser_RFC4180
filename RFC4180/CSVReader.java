@@ -332,7 +332,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			int ch = inputClass(nextChar);
 			int act = action[state][ch];
 			
-			// Delayed Commit before Performing Action when OTHER char encountered
+			// Delayed commit before performing action when OTHER char encountered
 			delayedCommit(OTHER);
 						
 			perform(act);
