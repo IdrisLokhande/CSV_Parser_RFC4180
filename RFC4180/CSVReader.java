@@ -36,10 +36,12 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 	// Configurations
 	private Mode mode;
-	private int delimiter;
+	private char[] delimiters;
+	private long low = 0, high = 0; //1-64, 65-128 ASCII bitset storage
 	private boolean enableFSMTrace;
 	private boolean trimSpaces;
 
+	private static final int DELIMITER_LIMIT = 5;
 	private static final int FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, DEAD = 4;
 	private static final int DELIMITER = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5;
 	private static final int EMIT_FIELD = 0, EMIT_RECORD = 1, NO_OP = 2, THROW_ERROR = 3, APPEND = 4;
@@ -84,7 +86,12 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 	public static class Builder{
 		private Mode mode = Mode.UNIX;
-		private int delimiter = ',';
+
+		private char[] delimiters = new char[DELIMITER_LIMIT];
+		{
+			delimiters[0] = ',';
+		}
+
 		private boolean trimSpaces = false;
 		private boolean enableFSMTrace = false;
 
@@ -96,8 +103,11 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			this.mode = mode;
 			return this;
 		}
-		public Builder setDelimiter(char delimiter){
-			this.delimiter = delimiter;
+		public Builder setDelimiters(char...delimiters){
+			if(delimiters.length>DELIMITER_LIMIT){
+				throw new IllegalArgumentException("Exceeded delimiter limit of " + DELIMITER_LIMIT);
+			}
+			this.delimiters = delimiters.clone();
 			return this;
 		}
 		public Builder enableTrace(boolean enableFSMTrace){
@@ -106,7 +116,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		}
 	
 		public CSVReader build(Reader reader){
-			return new CSVReader(reader, mode, delimiter, trimSpaces, enableFSMTrace);
+			return new CSVReader(reader, mode, delimiters, trimSpaces, enableFSMTrace);
 		}
 	}
 
@@ -114,15 +124,20 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		return new CSVReader.Builder().build(reader);
 	}
 	
-	private CSVReader(Reader reader, Mode mode, int delimiter, boolean trimSpaces,  boolean enableFSMTrace){
+	private CSVReader(Reader reader, Mode mode, char[] delimiters, boolean trimSpaces,  boolean enableFSMTrace){
 		this.reader = reader;
 		this.nextChar = normalisedRead();
 		
 		this.mode = mode;
-		if(delimiter == '\r' || delimiter == '\n'){
-			throw new IllegalArgumentException("Delimiter cannot be Line Ending");
+		for(int delimiter:delimiters){
+			if(delimiter == '\r' || delimiter == '\n'){
+				throw new IllegalArgumentException("Delimiter cannot be Line Ending");
+			}
+			if(delimiter != '\0'){
+				bitsetAdd(delimiter); // for O(1) lookup with less space
+			}
 		}
-		this.delimiter = delimiter;
+		this.delimiters = delimiters;
 		this.trimSpaces = trimSpaces;
 		this.enableFSMTrace = enableFSMTrace;
 
@@ -146,6 +161,22 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
                         }
                 }
         }	
+
+	private void bitsetAdd(int num){
+		if(num < 65){
+			low |= (1L << (num-1));
+		}else{
+			high |= (1L << (num-65));
+		}
+	}
+
+	private boolean bitsetContains(int num){
+		if(num < 65){
+			return (low & (1L << (num-1))) != 0;
+		}else{
+			return (high & (1L << (num-65))) != 0;
+		}
+	}
 
 	private void getFSMTrace(){
 		int ch = inputClass(nextChar);
@@ -176,7 +207,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	} 
 
 	private int inputClass(int c){
-		if(c == delimiter){
+		if(bitsetContains(c)){
 			return DELIMITER;			
 		}
                 switch(c){
