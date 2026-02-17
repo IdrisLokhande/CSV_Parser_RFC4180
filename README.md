@@ -7,7 +7,7 @@ A lightweight Java implementation of RFC-4180 style parsing built using FSM tabl
 - RFC-4180 Compliant
 - Streaming Parser
 - Accepts any Reader that extends Java Reader class
-- Configurable Line-Ending Policy (LF-only, normalised CRLF-only to LF, normalised CR/CRLF to LF)
+- Configurable Line-Ending Policy (LF-only, normalise CRLF-only to LF, normalise CR/CRLF to LF)
 - Configurable Whitespace Trimming
 - Allows any ASCII Delimiter (up to 5 as of now)
 - Debuggable FSM (Finite State Machine) Trace Mode
@@ -20,7 +20,7 @@ Delimiter handling is optimised by BitSet operations.
 
 ## Configurable Options
 
-- `model`: 0 for UNIX line endings (LF), 1 for WINDOWS line endings (CRLF), 2 for LENIENT mode (CR/CRLF)
+- `mode`: UNIX Mode for LF line endings, WINDOWS Mode for CRLF line endings, LENIENT Mode for CR/CRLF line endings
 - `trimSpaces`: Trim leading+trailing spaces for both quoted/unquoted fields
 - `enableFSMTrace`: Output FSM state transitions for learning/debugging
 - `delimiters`: A vararg that accepts any ASCII delimiter with DELIMITER_LIMIT of 5 
