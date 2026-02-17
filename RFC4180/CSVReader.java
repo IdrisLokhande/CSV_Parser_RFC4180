@@ -27,7 +27,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	// Lookahead
 	private int nextChar;
 	private boolean finished;	
-	private int buffered = -2; // empty
+	private int buffered = -2;
 
 	// Delay Commit
 	private int countTrailSpaces;
@@ -36,53 +36,55 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 	// Configurations
 	private Mode mode;
+	private int delimiter;
 	private boolean enableFSMTrace;
 	private boolean trimSpaces;
 
 	private static final int FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, DEAD = 4;
-	private static final int COMMA = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5;
+	private static final int DELIMITER = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5;
 	private static final int EMIT_FIELD = 0, EMIT_RECORD = 1, NO_OP = 2, THROW_ERROR = 3, APPEND = 4;
 
 	// Transition Function as Lookup Table
 	private static final int [][] transition = {
 		// FIELD_START
-		// COMMA,      QUOTE,        CR,         LF,           EOF,         OTHER
+		// DELIMITER,  QUOTE,       CR,         LF,           EOF,         OTHER
 		{FIELD_START,  QUOTED,      DEAD,     FIELD_START,    FIELD_START,  UNQUOTED},
 		// UNQUOTED
-		// COMMA,      QUOTE,        CR,         LF,           EOF,         OTHER
+		// DELIMITER,  QUOTE,       CR,         LF,           EOF,         OTHER
 		{FIELD_START,  DEAD,        DEAD,     FIELD_START,    FIELD_START,  UNQUOTED},
 		// QUOTED
-		// COMMA,      QUOTE,        CR,         LF,           EOF,         OTHER
+		// DELIMITER,  QUOTE,       CR,         LF,           EOF,         OTHER
 		{QUOTED,       QUOTED_END,  QUOTED,   QUOTED,         DEAD,         QUOTED},
 		// QUOTED_END
-		// COMMA,      QUOTE,        CR,         LF,           EOF,         OTHER
+		// DELIMITER,  QUOTE,       CR,         LF,           EOF,         OTHER
 		{FIELD_START,  QUOTED,      DEAD,     FIELD_START,    FIELD_START,  DEAD},
 		// DEAD state
-		// COMMA,      QUOTE,        CR,         LF,           EOF,         OTHER
+		// DELIMITER,  QUOTE,       CR,         LF,           EOF,         OTHER
 		{DEAD,         DEAD,        DEAD,     DEAD,           DEAD,         DEAD}
 	};
 
 	// Action Function as Lookup Table
 	private static final int [][] action = {
 		// FIELD_START
-		// COMMA,     QUOTE,          CR,           LF,           EOF,        OTHER
+		// DELIMITER, QUOTE,          CR,           LF,           EOF,        OTHER
 		{EMIT_FIELD,  NO_OP,        THROW_ERROR,  EMIT_RECORD,  EMIT_FIELD,  APPEND},
 		// UNQUOTED
-		// COMMA,     QUOTE,          CR,           LF,           EOF,        OTHER
+		// DELIMITER, QUOTE,          CR,           LF,           EOF,        OTHER
 		{EMIT_FIELD,  THROW_ERROR,  THROW_ERROR,  EMIT_RECORD,  EMIT_FIELD,  APPEND},
 		// QUOTED
-		// COMMA,     QUOTE,          CR,           LF,           EOF,        OTHER
+		// DELIMITER, QUOTE,          CR,           LF,           EOF,        OTHER
 		{APPEND,      NO_OP,        APPEND,       APPEND,       THROW_ERROR, APPEND},
 		// QUOTED_END
-		// COMMA,     QUOTE,          CR,           LF,           EOF,        OTHER
+		// DELIMITER, QUOTE,          CR,           LF,           EOF,        OTHER
 		{EMIT_FIELD,  APPEND,       THROW_ERROR,  EMIT_RECORD,  EMIT_FIELD,  THROW_ERROR},
 		// DEAD state
-		// COMMA,     QUOTE,          CR,           LF,           EOF,        OTHER
+		// DELIMITER, QUOTE,          CR,           LF,           EOF,        OTHER
 		{THROW_ERROR, THROW_ERROR,  THROW_ERROR,  THROW_ERROR,  THROW_ERROR, THROW_ERROR}
 	};
 
 	public static class Builder{
 		private Mode mode = Mode.UNIX;
+		private int delimiter = ',';
 		private boolean trimSpaces = false;
 		private boolean enableFSMTrace = false;
 
@@ -94,25 +96,33 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			this.mode = mode;
 			return this;
 		}
+		public Builder setDelimiter(char delimiter){
+			this.delimiter = delimiter;
+			return this;
+		}
 		public Builder enableTrace(boolean enableFSMTrace){
-			this.enableFSMTrace = this.enableFSMTrace;
+			this.enableFSMTrace = enableFSMTrace;
 			return this;
 		}
 	
 		public CSVReader build(Reader reader){
-			return new CSVReader(reader, mode, trimSpaces, enableFSMTrace);
+			return new CSVReader(reader, mode, delimiter, trimSpaces, enableFSMTrace);
 		}
 	}
 
 	public static CSVReader defaultReader(Reader reader){ 
-                return new CSVReader.Builder().build(reader);
-        }
+		return new CSVReader.Builder().build(reader);
+	}
 	
-	private CSVReader(Reader reader, Mode mode, boolean trimSpaces,  boolean enableFSMTrace){
+	private CSVReader(Reader reader, Mode mode, int delimiter, boolean trimSpaces,  boolean enableFSMTrace){
 		this.reader = reader;
 		this.nextChar = normalisedRead();
 		
 		this.mode = mode;
+		if(delimiter == '\r' || delimiter == '\n'){
+			throw new IllegalArgumentException("Delimiter cannot be Line Ending");
+		}
+		this.delimiter = delimiter;
 		this.trimSpaces = trimSpaces;
 		this.enableFSMTrace = enableFSMTrace;
 
@@ -166,21 +176,22 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	} 
 
 	private int inputClass(int c){
-		switch(c){
-			case ',':
-				return COMMA;
-			case '\"':
-				return QUOTE;
-			case '\r':
-				return CR;
-			case '\n':
-				return LF;
-			case -1:
-				return EOF;
+		if(c == delimiter){
+			return DELIMITER;			
 		}
+                switch(c){
+                        case '\"':
+                                return QUOTE;
+                        case '\r':
+                                return CR;
+                        case '\n':
+                                return LF;
+                        case -1:
+                                return EOF;
+                }
 
-		return OTHER;
-	}
+                return OTHER;
+        }
 
 	private int normalisedRead(){
 		if(buffered != -2){
@@ -198,7 +209,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 	private void perform(int act){
 		// FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, DEAD = 4
-		// COMMA = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5
+		// DELIMITER = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5
 		// EMIT_FIELD = 0, EMIT_RECORD = 1, NO_OP = 2, THROW_ERROR = 3, APPEND = 4
 
 		switch(act){
@@ -310,7 +321,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				}
 
 				CSVRecord r = new CSVRecord(fields);
-				fields = new ArrayList<>();
+				fields.clear();
 				return r;
 			}
 
@@ -326,7 +337,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		// !fields.empty() guards against completely empty inputs
 		if(finished && !fields.isEmpty()){
 			CSVRecord r = new CSVRecord(fields);
-			fields = new ArrayList<>();
+			fields.clear();
 			return r;
 		}
 

@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets;
 public class Main{
 	public static void main(String[]args){
 		String CSV1 = "abc\n\"def\"\nghi\n\"\"\"jkl\"\"\""; 
-		String filePath = "Datasets/TestCSV - Sheet1.csv";
+		String filePath = "Datasets/Mockaroo_Data1.csv";
 		
 		try(CSVReader reader = new CSVReader.Builder()
 					.enableTrimming(true)
@@ -29,7 +29,7 @@ public class Main{
 				j++;
 				CSVRecord rec = reader.next();
 
-				System.out.println("\nRECORD: " + pos);
+				System.out.println("\nRECORD " + pos);
 
 				for(int i = 0; i<rec.getRecordSize(); i++){
 					System.out.print("[" + rec.getField(i).replace("\r", "<CR>").replace("\n", "<LF>") + "]");
