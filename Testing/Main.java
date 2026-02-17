@@ -19,7 +19,8 @@ public class Main{
 					.setMode(CSVReader.Mode.WINDOWS)
 					.build(new InputStreamReader(
 							new FileInputStream(filePath), StandardCharsets.UTF_8
-					))){
+					))
+		){
 			System.out.println("Records:");
 			int pos = 0;
 			int j = 0, LIM = 20;

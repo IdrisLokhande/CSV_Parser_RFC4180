@@ -220,49 +220,48 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	
 	private void normaliseEnding(){
 		if(mode == Mode.WINDOWS && nextChar == '\r' && state != QUOTED){
-                        // In Windows Mode, when CR is currently read,
-                        // throw error when lookahead is not LF,
-                        // else skip this CR and process lookahead LF
+			// In Windows Mode, when CR is currently read,
+			// throw error when lookahead is not LF,
+			// else skip this CR and process lookahead LF
 
-                        int lookahead = normalisedRead();
+			int lookahead = normalisedRead();
 
-                        if(lookahead != '\n'){
-                                perform(THROW_ERROR);
-                        }else{
-                                nextChar = lookahead;
-                        }
-                }else if(mode == Mode.LENIENT && nextChar == '\r' && state != QUOTED){
-                        // buffered is -2 when empty
-                        // In Lenient Mode, when CR is currently read,
-                        // if '\r\n' case, skip CR and process lookahead LF
-                        // else if '\rX', buffer X and set currently read CR to LF
-                        // On next normalisedRead(), buffered X will be processed
-                        // All this buffering is because read() is strictly one way
+			if(lookahead != '\n'){
+			        perform(THROW_ERROR);
+			}else{
+			        nextChar = lookahead;
+			}
+		}else if(mode == Mode.LENIENT && nextChar == '\r' && state != QUOTED){
+			// buffered is -2 when empty
+			// In Lenient Mode, when CR is currently read,
+			// if '\r\n' case, skip CR and process lookahead LF
+			// else if '\rX', buffer X and set currently read CR to LF
+			// On next normalisedRead(), buffered X will be processed
+			// All this buffering is because read() is strictly one way
 
-                        int lookahead = normalisedRead();
+			int lookahead = normalisedRead();
 
-                        if(lookahead != '\n'){
-                                buffered = lookahead;
-                                nextChar = '\n';
-                        }else{
-                                nextChar = lookahead;
-                        }
-                }else if(mode != Mode.UNIX && mode != Mode.WINDOWS && mode != Mode.LENIENT){
-                        throw new IllegalArgumentException("Incorrect Reader Mode");
-                }
-
+			if(lookahead != '\n'){
+			        buffered = lookahead;
+			        nextChar = '\n';
+			}else{
+			        nextChar = lookahead;
+			}
+		}else if(mode != Mode.UNIX && mode != Mode.WINDOWS && mode != Mode.LENIENT){
+			throw new IllegalArgumentException("Incorrect Reader Mode");
+		}
 	}
 	
 	private void delayedCommit(int charClass){
 		int ch = inputClass(nextChar);
 		if(ch == charClass){
-                        while(countTrailSpaces > 0){
-                                curr_field.append(' ');
-                                countTrailSpaces--;
-                        }
-                }else{
-                        countTrailSpaces = 0;
-                }
+			while(countTrailSpaces > 0){
+				curr_field.append(' ');
+				countTrailSpaces--;
+			}
+		}else{
+			countTrailSpaces = 0;
+		}
 	}
 	
 	@Override
@@ -287,55 +286,12 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			
 			// normalise CR/CRLF to LF cases
 			normaliseEnding();
-			/*
-			if(mode == WINDOWS && nextChar == '\r' && state != QUOTED){
-                                // In Windows Mode, when CR is currently read,
-                                // throw error when lookahead is not LF,
-                                // else skip this CR and process lookahead LF
-
-				int lookahead = normalisedRead();
-				
-				if(lookahead != '\n'){
-					perform(THROW_ERROR);
-				}else{
-					nextChar = lookahead;
-				}
-			}else if(mode == LENIENT && nextChar == '\r' && state != QUOTED){
-				// buffered is -2 when empty
-                                // In Lenient Mode, when CR is currently read,
-                                // if '\r\n' case, skip CR and process lookahead LF
-                                // else if '\rX', buffer X and set currently read CR to LF
-				// On next normalisedRead(), buffered X will be processed
-				// All this buffering is because read() is strictly one way
-	
-				int lookahead = normalisedRead();
-				
-				if(lookahead != '\n'){
-                                        buffered = lookahead;
-					nextChar = '\n';
-                                }else{
-                                        nextChar = lookahead;
-                                }
-			}else if(mode != UNIX && mode != WINDOWS && mode != LENIENT){
-				throw new IllegalArgumentException("Incorrect Reader Mode");
-			}
-			*/
 
 			int ch = inputClass(nextChar);
 			int act = action[state][ch];
 			
 			// Delayed Commit before Performing Action when OTHER char encountered
 			delayedCommit(OTHER);
-			/*
-			if(ch == OTHER){
-				while(countTrailSpaces > 0){
-					curr_field.append(' ');
-					countTrailSpaces--;
-				}
-			}else{
-				countTrailSpaces = 0;
-			}
-			*/
 						
 			perform(act);
 
@@ -359,9 +315,9 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			}
 
 			if(ch == EOF){
-                                finished = true ;
-                                break;
-                        }
+				finished = true;
+				break;
+			}
 			
 			nextChar = normalisedRead();
 		}
