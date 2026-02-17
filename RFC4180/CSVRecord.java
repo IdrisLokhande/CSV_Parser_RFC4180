@@ -1,4 +1,4 @@
-package RFC4180.RFC_CSV;
+package RFC4180;
 
 import java.util.ArrayList;
 import java.util.List;

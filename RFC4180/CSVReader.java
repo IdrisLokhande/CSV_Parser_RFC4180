@@ -1,6 +1,6 @@
-package RFC4180.RFC_CSV;
+package RFC4180;
 
-import RFC4180.RFC_CSV.CSVRecord;
+import RFC4180.CSVRecord;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,7 +13,6 @@ import java.io.UncheckedIOException;
 
 public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	// For FSM Trace
-	private static final String[] modes = {"UNIX", "WINDOWS", "LENIENT"};
 	private static final String[] states = {"FIELD_START", "UNQUOTED", "QUOTED", "QUOTED_END", "DEAD"};
 	private static final String[] classes = {"COMMA", "QUOTE", "CR", "LF", "EOF", "OTHER"};
 	private static final String[] actions = {"EMIT_FIELD", "EMIT_RECORD", "NO_OP", "THROW_ERROR", "APPEND"};
@@ -33,12 +32,13 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	// Delay Commit
 	private int countTrailSpaces;
 
+	public enum Mode{UNIX, WINDOWS, LENIENT};
+
 	// Configurations
-	private int mode;
+	private Mode mode;
 	private boolean enableFSMTrace;
 	private boolean trimSpaces;
 
-	private static final int UNIX = 0, WINDOWS = 1, LENIENT = 2; 
 	private static final int FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, DEAD = 4;
 	private static final int COMMA = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5;
 	private static final int EMIT_FIELD = 0, EMIT_RECORD = 1, NO_OP = 2, THROW_ERROR = 3, APPEND = 4;
@@ -81,7 +81,34 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		{THROW_ERROR, THROW_ERROR,  THROW_ERROR,  THROW_ERROR,  THROW_ERROR, THROW_ERROR}
 	};
 
-	public CSVReader(Reader reader, int mode, boolean trimSpaces,  boolean enableFSMTrace){
+	public static class Builder{
+		private Mode mode = Mode.UNIX;
+		private boolean trimSpaces = false;
+		private boolean enableFSMTrace = false;
+
+		public Builder enableTrimming(boolean trimSpaces){
+			this.trimSpaces = trimSpaces;
+			return this;
+		}
+		public Builder setMode(Mode mode){
+			this.mode = mode;
+			return this;
+		}
+		public Builder enableTrace(boolean enableFSMTrace){
+			this.enableFSMTrace = this.enableFSMTrace;
+			return this;
+		}
+	
+		public CSVReader build(Reader reader){
+			return new CSVReader(reader, mode, trimSpaces, enableFSMTrace);
+		}
+	}
+
+	public static CSVReader defaultReader(Reader reader){ 
+                return new CSVReader.Builder().build(reader);
+        }
+	
+	private CSVReader(Reader reader, Mode mode, boolean trimSpaces,  boolean enableFSMTrace){
 		this.reader = reader;
 		this.nextChar = normalisedRead();
 		
@@ -115,10 +142,9 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		String line = "-------------------------------------------------";
 
 		System.out.println(line);
-		System.out.println("STATE: " + states[state] + "\nMODE: " + modes[mode]);
 
 		System.out.println(
-			"\nCURRENTLY READ CHARACTER: " +
+			"CURRENTLY READ CHARACTER: " +
 			(nextChar == -1 ? "EOF" : 
 				(nextChar == '\r' ? "<CR>" : 
 					(nextChar == '\n' ? "<LF>" : "'" + (char)nextChar + "'")))
@@ -191,7 +217,54 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				throw new RuntimeException("Invalid CSV Format for Chosen Mode");
 		}
 	}
+	
+	private void normaliseEnding(){
+		if(mode == Mode.WINDOWS && nextChar == '\r' && state != QUOTED){
+                        // In Windows Mode, when CR is currently read,
+                        // throw error when lookahead is not LF,
+                        // else skip this CR and process lookahead LF
 
+                        int lookahead = normalisedRead();
+
+                        if(lookahead != '\n'){
+                                perform(THROW_ERROR);
+                        }else{
+                                nextChar = lookahead;
+                        }
+                }else if(mode == Mode.LENIENT && nextChar == '\r' && state != QUOTED){
+                        // buffered is -2 when empty
+                        // In Lenient Mode, when CR is currently read,
+                        // if '\r\n' case, skip CR and process lookahead LF
+                        // else if '\rX', buffer X and set currently read CR to LF
+                        // On next normalisedRead(), buffered X will be processed
+                        // All this buffering is because read() is strictly one way
+
+                        int lookahead = normalisedRead();
+
+                        if(lookahead != '\n'){
+                                buffered = lookahead;
+                                nextChar = '\n';
+                        }else{
+                                nextChar = lookahead;
+                        }
+                }else if(mode != Mode.UNIX && mode != Mode.WINDOWS && mode != Mode.LENIENT){
+                        throw new IllegalArgumentException("Incorrect Reader Mode");
+                }
+
+	}
+	
+	private void delayedCommit(int charClass){
+		int ch = inputClass(nextChar);
+		if(ch == charClass){
+                        while(countTrailSpaces > 0){
+                                curr_field.append(' ');
+                                countTrailSpaces--;
+                        }
+                }else{
+                        countTrailSpaces = 0;
+                }
+	}
+	
 	@Override
 	public boolean hasNext(){
 		return !finished;
@@ -213,6 +286,8 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			}
 			
 			// normalise CR/CRLF to LF cases
+			normaliseEnding();
+			/*
 			if(mode == WINDOWS && nextChar == '\r' && state != QUOTED){
                                 // In Windows Mode, when CR is currently read,
                                 // throw error when lookahead is not LF,
@@ -244,11 +319,14 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			}else if(mode != UNIX && mode != WINDOWS && mode != LENIENT){
 				throw new IllegalArgumentException("Incorrect Reader Mode");
 			}
+			*/
 
 			int ch = inputClass(nextChar);
 			int act = action[state][ch];
 			
 			// Delayed Commit before Performing Action when OTHER char encountered
+			delayedCommit(OTHER);
+			/*
 			if(ch == OTHER){
 				while(countTrailSpaces > 0){
 					curr_field.append(' ');
@@ -257,6 +335,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			}else{
 				countTrailSpaces = 0;
 			}
+			*/
 						
 			perform(act);
 
