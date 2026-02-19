@@ -5,18 +5,33 @@ import java.util.List;
 import java.util.Collections;
 
 public final class CSVRecord{
-        private final List<String> fields;
+	private String record;
+	private int[] fieldLastIndices;
+	private int expectedColumnCount;
 
-        CSVRecord(List<String> fields){
-                List<String> copy = new ArrayList<>(fields);
-                this.fields = Collections.unmodifiableList(copy);
+        CSVRecord(String record, int[] fieldLastIndices, int expectedColumnCount){
+		this.record = record;
+		this.fieldLastIndices = fieldLastIndices.clone();
+		this.expectedColumnCount = expectedColumnCount;
+
+		/*
+		System.out.println(record);
+		for(int indices:fieldLastIndices){
+			System.out.print(indices + "\t");
+		}                
+		System.out.println("");
+		*/
         }
 
         public int getRecordSize(){
-                return fields.size();
+                return expectedColumnCount;
         }
 
         public String getField(int fIndex){
-                return fields.get(fIndex);
+		if(fIndex == 0){
+			return record.substring(0, fieldLastIndices[fIndex]);
+		}
+                return record.substring(fieldLastIndices[fIndex-1], 
+					fieldLastIndices[fIndex]);
         }
 }

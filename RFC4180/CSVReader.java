@@ -1,7 +1,5 @@
 package RFC4180;
 
-import RFC4180.CSVRecord;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Iterator;
@@ -19,10 +17,18 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 	private final Reader reader;	
 
-	private StringBuilder curr_field;
-	private List<String> fields;
+	private StringBuilder recordBuffer;
+	private int[] fieldLastIndices;
+	private int size;
+	private boolean firstRecRead;
+	private int expectedColumnCount;
 	private int state;
 	private boolean recReady;
+
+	// Exception Handling
+	private int recordNumber;
+	private int actualColumnCount;
+	private StringBuilder recHistory;
 
 	// Lookahead
 	private int nextChar;
@@ -85,6 +91,8 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	};
 
 	public static class Builder{
+		// -----------------------------------------------------
+		// Default configurable values
 		private Mode mode = Mode.UNIX;
 
 		private char[] delimiters = new char[DELIMITER_LIMIT];
@@ -94,7 +102,8 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 		private boolean trimSpaces = false;
 		private boolean enableFSMTrace = false;
-
+		// -----------------------------------------------------
+		
 		public Builder enableTrimming(boolean trimSpaces){
 			this.trimSpaces = trimSpaces;
 			return this;
@@ -137,17 +146,22 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				bitsetAdd(delimiter); // for O(1) lookup with less space
 			}
 		}
+
 		this.delimiters = delimiters;
 		this.trimSpaces = trimSpaces;
 		this.enableFSMTrace = enableFSMTrace;
 
 		this.countTrailSpaces = 0;
-
+		
 		this.recReady = false;
 		this.finished = false;
+		this.firstRecRead = false;
 		
-		this.curr_field = new StringBuilder(32);
-		this.fields = new ArrayList<>();
+		this.recordBuffer = new StringBuilder(64);
+		this.recHistory = new StringBuilder(64);
+		this.fieldLastIndices = new int[128]; // 128 cols initially
+		this.size = 0;
+		this.expectedColumnCount = 0;
 		this.state = FIELD_START; // Starting state of FSM
 	}
 
@@ -185,23 +199,14 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		System.out.println(line);
 
 		System.out.println(
-			"CURRENTLY READ CHARACTER: " +
+			"STATE: " + states[state] +
+			"\nCURRENTLY READ CHARACTER: " +
 			(nextChar == -1 ? "EOF" : 
 				(nextChar == '\r' ? "<CR>" : 
 					(nextChar == '\n' ? "<LF>" : "'" + (char)nextChar + "'")))
 			+ "\nCHARACTER CLASS: " + classes[ch]
 		);
 		
-		System.out.println("\nCURRENT FIELD: [" + curr_field.toString().replace("\r", "<CR>").replace("\n", "<LF>") + "]");
-		System.out.println("TOTAL FIELDS: " + fields.size());
-		System.out.println("\nFIELDS:");
-		if(fields.isEmpty()){
-			System.out.println("<EMPTY>");
-		}
-		for(String field:fields){
-			System.out.println("[" + field.replace("\r", "<CR>").replace("\n", "<LF>") + "]");
-		}
-
 		System.out.println("\nCURRENT RECORD READY? ["+(recReady || ch == 4)+"]");
 		System.out.println(line);
 	} 
@@ -210,18 +215,18 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		if(bitsetContains(c)){
 			return DELIMITER;			
 		}
-                switch(c){
-                        case '\"':
-                                return QUOTE;
-                        case '\r':
-                                return CR;
-                        case '\n':
-                                return LF;
-                        case -1:
-                                return EOF;
-                }
+		switch(c){
+			case '\"':
+			        return QUOTE;
+			case '\r':
+			        return CR;
+			case '\n':
+			        return LF;
+			case -1:
+			        return EOF;
+		}
 
-                return OTHER;
+		return OTHER;
         }
 
 	private int normalisedRead(){
@@ -247,16 +252,28 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			case EMIT_RECORD:
 				recReady = true;
 			case EMIT_FIELD:
-				fields.add(curr_field.toString());	
-				curr_field.setLength(0);
+				if(size == fieldLastIndices.length){
+					int capacity = size + (size >> 1);
+					int[] newArr = new int[capacity];
+
+					System.arraycopy(fieldLastIndices, 0, newArr, 0, size);
+
+					fieldLastIndices = newArr;
+				}
+				actualColumnCount++;
+				if(firstRecRead && actualColumnCount > expectedColumnCount){
+                                	throw new CSVFormatException(recordNumber+1, expectedColumnCount, actualColumnCount, recHistory.toString());
+                        	} 
+				fieldLastIndices[size] = recordBuffer.length();
+				size++;
 				break;
 			case NO_OP:
 				break;
 			case APPEND:
-				curr_field.append((char)nextChar);
+				recordBuffer.append((char)nextChar);
 				break;
 			case THROW_ERROR:
-				throw new RuntimeException("Invalid CSV Format for Chosen Mode");
+				throw new CSVFormatException(mode.name(), trimSpaces);
 		}
 	}
 	
@@ -278,8 +295,9 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			// In Lenient Mode, when CR is currently read,
 			// if '\r\n' case, skip CR and process lookahead LF
 			// else if '\rX', buffer X and set currently read CR to LF
-			// On next normalisedRead(), buffered X will be processed
+			// On next normalisedRead(), buffered X will be processed.
 			// All this buffering is because read() is strictly one way
+			// and read() consumes character
 
 			int lookahead = normalisedRead();
 
@@ -298,7 +316,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		int ch = inputClass(nextChar);
 		if(ch == charClass){
 			while(countTrailSpaces > 0){
-				curr_field.append(' ');
+				recordBuffer.append(' ');
 				countTrailSpaces--;
 			}
 		}else{
@@ -308,7 +326,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	
 	@Override
 	public boolean hasNext(){
-		return !finished;
+		return !finished || recReady;
 	}
 
 	@Override
@@ -326,15 +344,17 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				continue;
 			}
 			
-			// normalise CR/CRLF to LF cases
+			// normalise CR/CRLF to LF
 			normaliseEnding();
+
+			if(nextChar != -1) recHistory.append((char)nextChar);
 
 			int ch = inputClass(nextChar);
 			int act = action[state][ch];
 			
 			// Delayed commit before performing action when OTHER char encountered
 			delayedCommit(OTHER);
-						
+			
 			perform(act);
 
 			if(enableFSMTrace) getFSMTrace();
@@ -342,6 +362,21 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			state = transition[state][ch];                     
 
 			if(recReady){
+				if(!firstRecRead){
+					firstRecRead = true;				
+					expectedColumnCount = size;
+					int[] newArr = new int[size];
+
+					System.arraycopy(fieldLastIndices, 0, newArr, 0, size);
+
+					fieldLastIndices = newArr;
+				}
+
+				if(actualColumnCount < expectedColumnCount){
+					String recHistoryString = recHistory.toString().replace("\r", "<CR>").replace("\n", "<LF>");
+                                	throw new CSVFormatException(recordNumber+1, expectedColumnCount, actualColumnCount, recHistoryString);
+                        	} 
+
 				recReady = false;
 				nextChar = normalisedRead();
 				state = FIELD_START;
@@ -349,10 +384,20 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				// To deal with edge cases of the form "(...)     \r\n"
 				if(nextChar == -1){
 					finished = true;
+					break;
 				}
 
-				CSVRecord r = new CSVRecord(fields);
-				fields.clear();
+				String record = recordBuffer.toString();
+				
+				CSVRecord r = new CSVRecord(record, fieldLastIndices, expectedColumnCount);
+				recordBuffer.setLength(0);
+				recHistory.setLength(0);
+
+				size = 0;
+				actualColumnCount = 0;
+
+				recordNumber++;
+
 				return r;
 			}
 
@@ -363,12 +408,16 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			
 			nextChar = normalisedRead();
 		}
-		
+
 		// Flush at EOF
-		// !fields.empty() guards against completely empty inputs
-		if(finished && !fields.isEmpty()){
-			CSVRecord r = new CSVRecord(fields);
-			fields.clear();
+		// !recordBuffer.isEmpty() guards against completely empty inputs
+		if(finished && !recordBuffer.isEmpty()){
+			String record = recordBuffer.toString();
+
+                        CSVRecord r = new CSVRecord(record, fieldLastIndices, expectedColumnCount);
+                        recordBuffer.setLength(0);
+			recordNumber++;
+
 			return r;
 		}
 

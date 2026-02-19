@@ -11,13 +11,13 @@ import java.nio.charset.StandardCharsets;
 
 public class Main{
 	public static void main(String[]args){
-		String CSV1 = "abc\n\"def\"\nghi\n\"\"\"jkl\"\"\""; 
-		String filePath = "Datasets/Semi_Delim.csv";
+		String CSV1 = "abc\n\"def\"\nghi\n\"\"\"jkl\"\"\""; // StringReader 
+		String filePath = "Datasets/test1MB.csv";
 		
 		try(CSVReader reader = new CSVReader.Builder()
 					.enableTrimming(true)
-					.setMode(CSVReader.Mode.WINDOWS)
-					.setDelimiters(';')
+					.setMode(CSVReader.Mode.UNIX)
+					.setDelimiters(',')
 					.build(new InputStreamReader(
 							new FileInputStream(filePath), StandardCharsets.UTF_8
 					))
