@@ -23,7 +23,6 @@ public final class CSVRecord{
 		if(fIndex == 0){
 			return record.substring(0, fieldLastIndices[fIndex]);
 		}
-                return record.substring(fieldLastIndices[fIndex-1], 
-					fieldLastIndices[fIndex]);
+                return record.substring(fieldLastIndices[fIndex-1], fieldLastIndices[fIndex]);
         }
 }
