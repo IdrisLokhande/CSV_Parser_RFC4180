@@ -273,7 +273,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				recordBuffer.append((char)nextChar);
 				break;
 			case THROW_ERROR:
-				throw new CSVFormatException(mode.name(), trimSpaces);
+				throw new CSVFormatException(recordNumber, actualColumnCount, mode.name(), trimSpaces);
 		}
 	}
 	
@@ -290,6 +290,8 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			}else{
 			        nextChar = lookahead;
 			}
+		}else if(mode == Mode.WINDOWS && nextChar == '\n' && state != QUOTED){
+			perform(THROW_ERROR);
 		}else if(mode == Mode.LENIENT && nextChar == '\r' && state != QUOTED){
 			// buffered is -2 when empty
 			// In Lenient Mode, when CR is currently read,

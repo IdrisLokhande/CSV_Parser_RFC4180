@@ -19,9 +19,10 @@ public final class CSVFormatException extends RuntimeException{
 		this.enabledTrim = enabledTrim;
 	}
 
-	public CSVFormatException(String mode, boolean enabledTrim){
-		this("mode " + mode + (enabledTrim? "":" without trimming ") + " incompatible with current CSV Format",
-			-1, -1, -1, null, mode, enabledTrim
+	public CSVFormatException(int recordNumber, int columnNumber, String mode, boolean enabledTrim){
+		this("mode " + mode + (enabledTrim? "":" without trimming ") + " incompatible with current CSV Format" + 
+			"\n\tin CSV File (Line " + recordNumber + ", Column " + columnNumber + ")",
+			recordNumber, -1, columnNumber, null, mode, enabledTrim
 		);
 	}
 

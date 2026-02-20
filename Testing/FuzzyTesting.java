@@ -8,13 +8,13 @@ public class FuzzyTesting{
 	public static void main(String[]args){
 		Runtime rt = Runtime.getRuntime();
 		
-		String[] datasets = {"Datasets/fuzz100MB.csv", "Datasets/cleanButInconsistentFuzz500MB.csv", "Datasets/cleanConsistentFuzz500MB.csv"};
+		String[] datasets = {"Datasets/sample.csv", "Datasets/cleanButInconsistentFuzz500MB.csv", "Datasets/cleanConsistentFuzz500MB.csv"};
 
 		for(String dataset:datasets){
 			System.out.println(dataset);
 			try(CSVReader reader = new CSVReader.Builder()
 						.enableTrimming(true)
-						.setMode(CSVReader.Mode.UNIX)
+						.setMode(CSVReader.Mode.WINDOWS)
 						.build(new FileReader(dataset))){
 				int count = 0;
 
