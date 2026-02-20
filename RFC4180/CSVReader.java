@@ -209,15 +209,15 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	}
 
 	@Override
-        public void close(){
-                if(reader != null){
-                        try{
-                                reader.close();
-                        }catch(IOException e){
-                                throw new UncheckedIOException(e);
-                        }
-                }
-        }	
+	public void close(){
+	        if(reader != null){
+	                try{
+	                        reader.close();
+	                }catch(IOException e){
+	                        throw new UncheckedIOException(e);
+	                }
+	        }
+	}	
 
 	private void bitsetAdd(int num){
 		if(num < 65){
@@ -295,8 +295,8 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				}
 				actualColumnCount++;
 				if(firstRecRead && actualColumnCount > expectedColumnCount){
-                                	throw new CSVFormatException(recordNumber+1, expectedColumnCount, actualColumnCount, recHistory.toString());
-                        	} 
+					throw new CSVFormatException(recordNumber+1, expectedColumnCount, actualColumnCount, recHistory.toString());
+				} 
 				fieldLastIndices[size] = recordBuffer.length();
 				size++;
 				break;
@@ -312,41 +312,41 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	
 	private void windowsEnding(){
 		if(nextChar == '\r' && state != QUOTED){
-                        // In Windows Mode, when CR is currently read,
-                        // throw error when lookahead is not LF,
-                        // else skip this CR and process lookahead LF
+		        // In Windows Mode, when CR is currently read,
+		        // throw error when lookahead is not LF,
+		        // else skip this CR and process lookahead LF
 
-                        int lookahead = bufferedRead();
+		        int lookahead = bufferedRead();
 
-                        if(lookahead != '\n'){
-                                perform(THROW_ERROR);
-                        }else{
-                                nextChar = lookahead;
-                        }
-                }else if(nextChar == '\n' && state != QUOTED){
-                        perform(THROW_ERROR);
-                }
+		        if(lookahead != '\n'){
+		                perform(THROW_ERROR);
+		        }else{
+		                nextChar = lookahead;
+		        }
+		}else if(nextChar == '\n' && state != QUOTED){
+		        perform(THROW_ERROR);
+		}
 	}
 
 	private void lenientEnding(){
 		if(nextChar == '\r' && state != QUOTED){
-                        // buffered is -2 when empty
-                        // In Lenient Mode, when CR is currently read,
-                        // if '\r\n' case, skip CR and process lookahead LF
-                        // else if '\rX', buffer X and set currently read CR to LF
-                        // On next bufferedRead(), buffered X will be processed.
-                        // All this buffering is because read() is strictly one way
-                        // and read() consumes character
+		        // buffered is -2 when empty
+		        // In Lenient Mode, when CR is currently read,
+		        // if '\r\n' case, skip CR and process lookahead LF
+		        // else if '\rX', buffer X and set currently read CR to LF
+		        // On next bufferedRead(), buffered X will be processed.
+		        // All this buffering is because read() is strictly one way
+		        // and read() consumes character
 
-                        int lookahead = bufferedRead();
+		        int lookahead = bufferedRead();
 
-                        if(lookahead != '\n'){
-                                buffered = lookahead;
-                                nextChar = '\n';
-                        }else{
-                                nextChar = lookahead;
-                        }
-                }
+		        if(lookahead != '\n'){
+		                buffered = lookahead;
+		                nextChar = '\n';
+		        }else{
+		                nextChar = lookahead;
+		        }
+		}
 	}
 	
 	private void delayedCommit(int ch){
@@ -412,8 +412,8 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 				if(actualColumnCount < expectedColumnCount){
 					String recHistoryString = recHistory.toString().replace("\r", "<CR>").replace("\n", "<LF>");
-                                	throw new CSVFormatException(recordNumber+1, expectedColumnCount, actualColumnCount, recHistoryString);
-                        	} 
+					throw new CSVFormatException(recordNumber+1, expectedColumnCount, actualColumnCount, recHistoryString);
+				} 
 
 				recReady = false;
 				nextChar = bufferedRead();
@@ -453,8 +453,8 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		if(finished && !recordBuffer.isEmpty()){
 			String record = recordBuffer.toString();
 
-                        CSVRecord r = new CSVRecord(record, fieldLastIndices, expectedColumnCount);
-                        recordBuffer.setLength(0);
+			CSVRecord r = new CSVRecord(record, fieldLastIndices, expectedColumnCount);
+			recordBuffer.setLength(0);
 			recordNumber++;
 
 			return r;
