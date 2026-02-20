@@ -1,13 +1,20 @@
 # Background
 
+- This project explores a **streaming ingestion engine** that **parses arbitarily large CSV files** in a **single pass** with **O(1) memory**
+- The naive approach requires loading the whole file into memory, leading to inefficient Heap usage
+- Hence, this project uses optimised methods such as array lookups, using a reader buffer, lazy materialisation and BitSet operations along with streaming
+
+# Motivation
+
 - Pandas.read_csv() had made me wonder how CSV Parsing works
 - With the knowledge of Theory of Computation, I was able to explore how CSV Parsing through Finite State Machine (FSM) works
-- The naive approach requires loading the whole file into memory, leading to inefficient Heap usage
-- This project explores a streaming ingestion engine that parses arbitarily large CSV files in a single pass with O(1) memory
+- This also got me interested in system designing and different methods of testing
 
-# RFC4180 CSV Parser (Java)
+# Introduction
 
-A lightweight Java implementation of RFC-4180 style parsing built using a FSM.
+This project is a **lightweight Java implementation** of **RFC-4180** style parsing built using a **FSM**. This
+explores how a streaming ingestion engine works and what methods are used to tune and increase its flexibility
+and efficiency.
 
 ## Features
 
@@ -44,6 +51,6 @@ A lightweight Java implementation of RFC-4180 style parsing built using a FSM.
 
 ## Future Improvements
 
-- Two-Phase Architecture (Tokenizer+Parser) in place of current single FSM + hardcoded workarounds
-- Benchmark comparisons and more testing 
-- Using byte streams instead of character streams to significantly decrease internal UTF8 to UTF16 conversion costs
+- **Two-Phase Architecture** (Tokenizer+Parser) in place of current single FSM + hardcoded workarounds
+- **Benchmark comparisons** and more testing 
+- Using **byte streams** instead of character streams to significantly **decrease internal UTF8 to UTF16 conversion costs**
