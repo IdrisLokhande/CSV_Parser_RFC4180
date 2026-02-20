@@ -11,8 +11,8 @@ import java.io.UncheckedIOException;
 
 public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	private interface EndingHandler{
-                void handle();
-        }
+		void handle();
+	}
 
 	// For FSM Trace
 	private static final String[] states = {"FIELD_START", "UNQUOTED", "QUOTED", "QUOTED_END", "DEAD"};
@@ -37,7 +37,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 	// Buffering and Lookahead
 	private final char[] ioBuff;
-        private int ioPos;
+	private int ioPos;
 	private int limit;
 	private int nextChar;	
 	private int buffered;
@@ -165,8 +165,6 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				throw new IllegalArgumentException("Invalid Reader Mode");
 		}
 
-		
-
 		this.delimiters = delimiters;
 		
 		for(int delimiter:delimiters){
@@ -280,7 +278,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 
 	private void perform(int act){
 		// FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, DEAD = 4
-		// DELIMITER = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5
+		// OTHER = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, DELIMITER = 5
 		// EMIT_FIELD = 0, EMIT_RECORD = 1, NO_OP = 2, THROW_ERROR = 3, APPEND = 4
 
 		switch(act){
