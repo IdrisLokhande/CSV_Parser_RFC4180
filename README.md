@@ -1,7 +1,13 @@
+# Background
+
+- Pandas.read_csv() had made me wonder how CSV Parsing works
+- With the knowledge of Theory of Computation, I was able to explore how CSV Parsing through Finite State Machine (FSM) works
+- The naive approach requires loading the whole file into memory, leading to inefficient Heap usage
+- This project explores a streaming ingestion engine that parses arbitarily large CSV files in a single pass with O(1) memory
+
 # RFC4180 CSV Parser (Java)
 
-A lightweight Java implementation of RFC-4180 style parsing built using FSM.
-Pandas.read_csv() and Theory of Computation had gotten me interested in making this. 
+A lightweight Java implementation of RFC-4180 style parsing built using a FSM.
 
 ## Features
 
