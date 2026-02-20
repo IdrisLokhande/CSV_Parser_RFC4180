@@ -13,14 +13,6 @@ public final class CSVRecord{
 		this.record = record;
 		this.fieldLastIndices = fieldLastIndices.clone();
 		this.expectedColumnCount = expectedColumnCount;
-
-		/*
-		System.out.println(record);
-		for(int indices:fieldLastIndices){
-			System.out.print(indices + "\t");
-		}                
-		System.out.println("");
-		*/
         }
 
         public int getRecordSize(){
