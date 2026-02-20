@@ -8,6 +8,7 @@ public final class CSVFormatException extends RuntimeException{
 	private final String mode;
 	private final boolean enabledTrim;
 
+	// Master Constructor
 	private CSVFormatException(String message, int recordNumber, int expectedColumns, int actualColumns, String rawRecord, String mode, boolean enabledTrim){
 		super(message);
 		
@@ -21,8 +22,8 @@ public final class CSVFormatException extends RuntimeException{
 
 	public CSVFormatException(int recordNumber, int columnNumber, String mode, boolean enabledTrim){
 		this("mode " + mode + (enabledTrim? "":" without trimming ") + " incompatible with current CSV Format" + 
-			"\n\tin CSV File (Line " + recordNumber + ", Column " + columnNumber + ")",
-			recordNumber, -1, columnNumber, null, mode, enabledTrim
+			"\n\tin CSV File (Line " + recordNumber + ", Column " + columnNumber + ")", recordNumber, -1,
+			columnNumber, null, mode, enabledTrim
 		);
 	}
 
@@ -32,6 +33,7 @@ public final class CSVFormatException extends RuntimeException{
 		);
 	}
 
+	// getters
 	public int recordNumber(){
 		return recordNumber;	
 	}

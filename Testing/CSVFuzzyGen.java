@@ -7,10 +7,15 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 
 class CSVFuzzer{
+	// tune this as you wish
+	// mainly used for testing custom exception throws, or soaking parser with fuzzy consistent data
+	
 	private static final String[] TOKENS = {
 		"a", "b", "c", "d", "e", "f", "g", "h",
 		";", " ", ".", "\t"
 	};
+
+	private static final String DELIMITER = ",";
 	private static final String LINE_ENDING = "\n";
 
 	public static String randomRow(Random r){
@@ -27,7 +32,7 @@ class CSVFuzzer{
 			}
 
 			if(quoted) builder.append("\"");
-			if(f<cols-1) builder.append(",");
+			if(f<cols-1) builder.append(DELIMITER);
 		}	
 
 		builder.append(LINE_ENDING);

@@ -13,6 +13,7 @@ public class Main{
 	public static void main(String[]args){
 		String CSV1 = "abc\n\"def\"\nghi\n\"\"\"jkl\"\"\""; // StringReader 
 		String filePath = "Datasets/test1MB.csv";
+		// filepath is relative to YOUR current working directory
 		
 		try(CSVReader reader = new CSVReader.Builder()
 					.enableTrimming(true)
@@ -24,7 +25,7 @@ public class Main{
 		){
 			System.out.println("Records:");
 			int pos = 0;
-			int j = 0, LIM = 20;
+			int j = 0, LIM = 20; // LIM for printing only first few rows; tune as you wish 
 			while(j<LIM && reader.hasNext()){
 				pos++;
 				j++;

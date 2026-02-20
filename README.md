@@ -1,11 +1,12 @@
 # RFC4180 CSV Parser (Java)
 
-A lightweight Java implementation of RFC-4180 style parsing built using FSM tables. 
+A lightweight Java implementation of RFC-4180 style parsing built using FSM.
+Pandas.read_csv() and Theory of Computation had gotten me interested in making this. 
 
 ## Features
 
 - RFC-4180 Compliant
-- Streaming Parser
+- Streaming, Lazy CSV Engine
 - Accepts any Reader that extends Java Reader class
 - Configurable Line-Ending Policy (LF-only, normalise CRLF-only to LF, normalise CR/CRLF to LF)
 - Configurable Whitespace Trimming
@@ -14,9 +15,11 @@ A lightweight Java implementation of RFC-4180 style parsing built using FSM tabl
 
 ## Design
 
-This Parser is implemented as a FSM with separate transition and action tables, resembling a Mealy Machine.
-Line-ending normalisation and whitespace trimming both are handled in a safe manner without multichar lookaheads.
-Delimiter handling is optimised by BitSet operations.
+- Parser is implemented as a FSM with separate transition and action tables, resembling a Mealy Machine
+- Line-ending normalisation and whitespace trimming both are handled in a safe manner without multichar lookaheads
+- Delimiter handling is optimised by BitSet operations
+- Uses buffered reading with buffer of size 8192 bytes that enables lower system cost
+- Equipped with custom CSVFormatException (extending RuntimeException) for flexible exception handling
 
 ## Configurable Options
 
@@ -27,11 +30,14 @@ Delimiter handling is optimised by BitSet operations.
 
 ## Status
 
-This is solely an educational project as of now. Theory of Computation had gotten me interested in making this.
-Weekly or monthly updates are scheduled.
+- This is solely an educational project as of now
+- Fuzzy Tested till 500 MB generated CSV File
+- Soak Tested till 100 MB generated CSV File
+- Fuzzy and Soak stable, with throughput stabilising at approx. 44MB/s
+- Weekly or monthly updates are scheduled.
 
 ## Future Improvements
 
 - Two-Phase Architecture (Tokenizer+Parser) in place of current single FSM + hardcoded workarounds
-- Benchmark Comparisons and more testing 
-- More optimizations
+- Benchmark comparisons and more testing 
+- Using byte streams instead of character streams to significantly decrease internal UTF8 to UTF16 conversion costs

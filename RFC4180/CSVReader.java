@@ -10,14 +10,19 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 
 public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
+	private interface EndingHandler{
+                void handle();
+        }
+
 	// For FSM Trace
 	private static final String[] states = {"FIELD_START", "UNQUOTED", "QUOTED", "QUOTED_END", "DEAD"};
-	private static final String[] classes = {"COMMA", "QUOTE", "CR", "LF", "EOF", "OTHER"};
+	private static final String[] classes = {"OTHER", "QUOTE", "CR", "LF", "EOF", "DELIMITER"};
 	private static final String[] actions = {"EMIT_FIELD", "EMIT_RECORD", "NO_OP", "THROW_ERROR", "APPEND"};
 
 	private final Reader reader;	
 
 	private StringBuilder recordBuffer;
+	private int maxRecSizeSeen;
 	private int[] fieldLastIndices;
 	private int size;
 	private boolean firstRecRead;
@@ -30,10 +35,13 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	private int actualColumnCount;
 	private StringBuilder recHistory;
 
-	// Lookahead
-	private int nextChar;
-	private boolean finished;	
-	private int buffered = -2;
+	// Buffering and Lookahead
+	private final char[] ioBuff;
+        private int ioPos;
+	private int limit;
+	private int nextChar;	
+	private int buffered;
+	private boolean finished;
 
 	// Delay Commit
 	private int countTrailSpaces;
@@ -41,53 +49,58 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	public enum Mode{UNIX, WINDOWS, LENIENT};
 
 	// Configurations
-	private Mode mode;
-	private char[] delimiters;
-	private long low = 0, high = 0; //1-64, 65-128 ASCII bitset storage
-	private boolean enableFSMTrace;
-	private boolean trimSpaces;
+	private final Mode mode;
+	private final char[] delimiters;
+	private long low = 0, high = 0; //1-64, 65-128 ASCII bitset storage for delimiters
+	private final boolean enableFSMTrace;
+	private final boolean trimSpaces;
 
 	private static final int DELIMITER_LIMIT = 5;
+	private static final int IO_LIMIT = 8192; // 8192 bytes
 	private static final int FIELD_START = 0, UNQUOTED = 1,  QUOTED = 2, QUOTED_END = 3, DEAD = 4;
-	private static final int DELIMITER = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, OTHER = 5;
+	private static final int OTHER = 0, QUOTE = 1, CR = 2, LF = 3, EOF = 4, DELIMITER = 5;
 	private static final int EMIT_FIELD = 0, EMIT_RECORD = 1, NO_OP = 2, THROW_ERROR = 3, APPEND = 4;
+
+	private final int[] inputClassTable;
+
+	private final EndingHandler endingHandler;
 
 	// Transition Function as Lookup Table
 	private static final int [][] transition = {
 		// FIELD_START
-		// DELIMITER,  QUOTE,       CR,         LF,           EOF,         OTHER
-		{FIELD_START,  QUOTED,      DEAD,     FIELD_START,    FIELD_START,  UNQUOTED},
+		// OTHER,   QUOTE,       CR,         LF,           EOF,          DELIMITER
+		{UNQUOTED,  QUOTED,      DEAD,     FIELD_START,    FIELD_START,  FIELD_START},
 		// UNQUOTED
-		// DELIMITER,  QUOTE,       CR,         LF,           EOF,         OTHER
-		{FIELD_START,  DEAD,        DEAD,     FIELD_START,    FIELD_START,  UNQUOTED},
+		// OTHER,   QUOTE,       CR,         LF,           EOF,          DELIMITER
+		{UNQUOTED,  DEAD,        DEAD,     FIELD_START,    FIELD_START,  FIELD_START},
 		// QUOTED
-		// DELIMITER,  QUOTE,       CR,         LF,           EOF,         OTHER
-		{QUOTED,       QUOTED_END,  QUOTED,   QUOTED,         DEAD,         QUOTED},
+		// OTHER,   QUOTE,       CR,         LF,           EOF,          DELIMITER
+		{QUOTED,    QUOTED_END,  QUOTED,   QUOTED,         DEAD,         QUOTED},
 		// QUOTED_END
-		// DELIMITER,  QUOTE,       CR,         LF,           EOF,         OTHER
-		{FIELD_START,  QUOTED,      DEAD,     FIELD_START,    FIELD_START,  DEAD},
+		// OTHER,   QUOTE,       CR,         LF,           EOF,          DELIMITER
+		{DEAD,      QUOTED,      DEAD,     FIELD_START,    FIELD_START,  FIELD_START},
 		// DEAD state
-		// DELIMITER,  QUOTE,       CR,         LF,           EOF,         OTHER
-		{DEAD,         DEAD,        DEAD,     DEAD,           DEAD,         DEAD}
+		// OTHER,   QUOTE,       CR,         LF,           EOF,          DELIMITER
+		{DEAD,      DEAD,        DEAD,     DEAD,           DEAD,         DEAD}
 	};
 
 	// Action Function as Lookup Table
 	private static final int [][] action = {
 		// FIELD_START
-		// DELIMITER, QUOTE,          CR,           LF,           EOF,        OTHER
-		{EMIT_FIELD,  NO_OP,        THROW_ERROR,  EMIT_RECORD,  EMIT_FIELD,  APPEND},
+		// OTHER,      QUOTE,          CR,           LF,           EOF,       DELIMITER
+		{APPEND,       NO_OP,        THROW_ERROR,  EMIT_RECORD,  EMIT_FIELD,  EMIT_FIELD},
 		// UNQUOTED
-		// DELIMITER, QUOTE,          CR,           LF,           EOF,        OTHER
-		{EMIT_FIELD,  THROW_ERROR,  THROW_ERROR,  EMIT_RECORD,  EMIT_FIELD,  APPEND},
+		// OTHER,      QUOTE,          CR,           LF,           EOF,       DELIMITER
+		{APPEND,       THROW_ERROR,  THROW_ERROR,  EMIT_RECORD,  EMIT_FIELD,  EMIT_FIELD},
 		// QUOTED
-		// DELIMITER, QUOTE,          CR,           LF,           EOF,        OTHER
-		{APPEND,      NO_OP,        APPEND,       APPEND,       THROW_ERROR, APPEND},
+		// OTHER,      QUOTE,          CR,           LF,           EOF,       DELIMITER
+		{APPEND,       NO_OP,        APPEND,       APPEND,       THROW_ERROR, APPEND},
 		// QUOTED_END
-		// DELIMITER, QUOTE,          CR,           LF,           EOF,        OTHER
-		{EMIT_FIELD,  APPEND,       THROW_ERROR,  EMIT_RECORD,  EMIT_FIELD,  THROW_ERROR},
+		// OTHER,      QUOTE,          CR,           LF,           EOF,       DELIMITER
+		{THROW_ERROR,  APPEND,       THROW_ERROR,  EMIT_RECORD,  EMIT_FIELD,  EMIT_FIELD},
 		// DEAD state
-		// DELIMITER, QUOTE,          CR,           LF,           EOF,        OTHER
-		{THROW_ERROR, THROW_ERROR,  THROW_ERROR,  THROW_ERROR,  THROW_ERROR, THROW_ERROR}
+		// OTHER,      QUOTE,          CR,           LF,           EOF,       DELIMITER
+		{THROW_ERROR,  THROW_ERROR,  THROW_ERROR,  THROW_ERROR,  THROW_ERROR, THROW_ERROR}
 	};
 
 	public static class Builder{
@@ -135,9 +148,27 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	
 	private CSVReader(Reader reader, Mode mode, char[] delimiters, boolean trimSpaces,  boolean enableFSMTrace){
 		this.reader = reader;
-		this.nextChar = normalisedRead();
-		
 		this.mode = mode;
+		
+		// better to use switch because endingHandler is final but not intialised yet
+		switch(mode){
+			case WINDOWS:
+				endingHandler = this::windowsEnding;
+				break;
+			case LENIENT:
+				endingHandler = this::lenientEnding;
+				break;
+			case UNIX:
+				endingHandler = () -> {}; // nothing
+				break;
+			default:
+				throw new IllegalArgumentException("Invalid Reader Mode");
+		}
+
+		
+
+		this.delimiters = delimiters;
+		
 		for(int delimiter:delimiters){
 			if(delimiter == '\r' || delimiter == '\n'){
 				throw new IllegalArgumentException("Delimiter cannot be Line Ending");
@@ -147,7 +178,14 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			}
 		}
 
-		this.delimiters = delimiters;
+		this.inputClassTable = new int[128]; // already filled with OTHER
+		inputClassTable['\"'] = QUOTE;
+		inputClassTable['\r'] = CR;
+		inputClassTable['\n'] = LF;
+		for(char d:delimiters){
+			inputClassTable[d] = DELIMITER;
+		}
+
 		this.trimSpaces = trimSpaces;
 		this.enableFSMTrace = enableFSMTrace;
 
@@ -156,8 +194,15 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		this.recReady = false;
 		this.finished = false;
 		this.firstRecRead = false;
-		
-		this.recordBuffer = new StringBuilder(64);
+
+		this.ioBuff = new char[IO_LIMIT];
+		this.ioPos = 0;
+		this.limit = 0;
+		this.buffered = -2; // empty
+		this.nextChar = bufferedRead();
+
+		this.maxRecSizeSeen = 64;
+		this.recordBuffer = new StringBuilder(maxRecSizeSeen);
 		this.recHistory = new StringBuilder(64);
 		this.fieldLastIndices = new int[128]; // 128 cols initially
 		this.size = 0;
@@ -193,9 +238,8 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 	}
 
 	private void getFSMTrace(){
-		int ch = inputClass(nextChar);
+		int ch = (nextChar == -1)? EOF : (nextChar<128)? inputClassTable[nextChar] : OTHER;
 		String line = "-------------------------------------------------";
-
 		System.out.println(line);
 
 		System.out.println(
@@ -207,40 +251,31 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			+ "\nCHARACTER CLASS: " + classes[ch]
 		);
 		
-		System.out.println("\nCURRENT RECORD READY? ["+(recReady || ch == 4)+"]");
+		System.out.println("\nCURRENT RECORD READY? ["+(recReady || ch == EOF)+"]");
 		System.out.println(line);
 	} 
 
-	private int inputClass(int c){
-		if(bitsetContains(c)){
-			return DELIMITER;			
-		}
-		switch(c){
-			case '\"':
-			        return QUOTE;
-			case '\r':
-			        return CR;
-			case '\n':
-			        return LF;
-			case -1:
-			        return EOF;
-		}
-
-		return OTHER;
-        }
-
-	private int normalisedRead(){
+	private int bufferedRead(){
 		if(buffered != -2){
 			int temp = buffered;
 			buffered = -2;
 			return temp;
 		}
 
-		try{
-			return reader.read();
-		}catch(IOException e){
-			throw new UncheckedIOException(e);
+		if(ioPos >= limit){
+			try{
+				limit = reader.read(ioBuff);
+				ioPos = 0;
+				
+				if(limit == -1){
+					return -1;
+				}	
+			}catch(IOException e){
+				throw new UncheckedIOException(e);
+			}
 		}
+
+		return ioBuff[ioPos++];
 	}
 
 	private void perform(int act){
@@ -273,50 +308,51 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				recordBuffer.append((char)nextChar);
 				break;
 			case THROW_ERROR:
-				throw new CSVFormatException(recordNumber, actualColumnCount, mode.name(), trimSpaces);
+				throw new CSVFormatException(recordNumber+1, actualColumnCount+1, mode.name(), trimSpaces);
 		}
 	}
 	
-	private void normaliseEnding(){
-		if(mode == Mode.WINDOWS && nextChar == '\r' && state != QUOTED){
-			// In Windows Mode, when CR is currently read,
-			// throw error when lookahead is not LF,
-			// else skip this CR and process lookahead LF
+	private void windowsEnding(){
+		if(nextChar == '\r' && state != QUOTED){
+                        // In Windows Mode, when CR is currently read,
+                        // throw error when lookahead is not LF,
+                        // else skip this CR and process lookahead LF
 
-			int lookahead = normalisedRead();
+                        int lookahead = bufferedRead();
 
-			if(lookahead != '\n'){
-			        perform(THROW_ERROR);
-			}else{
-			        nextChar = lookahead;
-			}
-		}else if(mode == Mode.WINDOWS && nextChar == '\n' && state != QUOTED){
-			perform(THROW_ERROR);
-		}else if(mode == Mode.LENIENT && nextChar == '\r' && state != QUOTED){
-			// buffered is -2 when empty
-			// In Lenient Mode, when CR is currently read,
-			// if '\r\n' case, skip CR and process lookahead LF
-			// else if '\rX', buffer X and set currently read CR to LF
-			// On next normalisedRead(), buffered X will be processed.
-			// All this buffering is because read() is strictly one way
-			// and read() consumes character
+                        if(lookahead != '\n'){
+                                perform(THROW_ERROR);
+                        }else{
+                                nextChar = lookahead;
+                        }
+                }else if(nextChar == '\n' && state != QUOTED){
+                        perform(THROW_ERROR);
+                }
+	}
 
-			int lookahead = normalisedRead();
+	private void lenientEnding(){
+		if(nextChar == '\r' && state != QUOTED){
+                        // buffered is -2 when empty
+                        // In Lenient Mode, when CR is currently read,
+                        // if '\r\n' case, skip CR and process lookahead LF
+                        // else if '\rX', buffer X and set currently read CR to LF
+                        // On next bufferedRead(), buffered X will be processed.
+                        // All this buffering is because read() is strictly one way
+                        // and read() consumes character
 
-			if(lookahead != '\n'){
-			        buffered = lookahead;
-			        nextChar = '\n';
-			}else{
-			        nextChar = lookahead;
-			}
-		}else if(mode != Mode.UNIX && mode != Mode.WINDOWS && mode != Mode.LENIENT){
-			throw new IllegalArgumentException("Incorrect Reader Mode");
-		}
+                        int lookahead = bufferedRead();
+
+                        if(lookahead != '\n'){
+                                buffered = lookahead;
+                                nextChar = '\n';
+                        }else{
+                                nextChar = lookahead;
+                        }
+                }
 	}
 	
-	private void delayedCommit(int charClass){
-		int ch = inputClass(nextChar);
-		if(ch == charClass){
+	private void delayedCommit(int ch){
+		if(ch == OTHER){
 			while(countTrailSpaces > 0){
 				recordBuffer.append(' ');
 				countTrailSpaces--;
@@ -336,26 +372,26 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 		while(true){
 			// In Trim Mode, read but do not process space chars at FIELD_START
 			if(trimSpaces && nextChar == ' ' && state == FIELD_START){
-				nextChar = normalisedRead();
+				nextChar = bufferedRead();
 				continue; 
 			}
 			// In Trim Mode, read but delay proccessing of trailing space chars due to ambiguity
 			if(trimSpaces && nextChar == ' ' && (state == UNQUOTED || state == QUOTED_END)){
 				countTrailSpaces++;
-				nextChar = normalisedRead();
+				nextChar = bufferedRead();
 				continue;
 			}
 			
 			// normalise CR/CRLF to LF
-			normaliseEnding();
+			endingHandler.handle();
 
 			if(nextChar != -1) recHistory.append((char)nextChar);
 
-			int ch = inputClass(nextChar);
+			int ch = (nextChar == -1)? EOF : (nextChar<128)? inputClassTable[nextChar] : OTHER;
 			int act = action[state][ch];
 			
 			// Delayed commit before performing action when OTHER char encountered
-			delayedCommit(OTHER);
+			delayedCommit(ch);
 			
 			perform(act);
 
@@ -364,6 +400,8 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 			state = transition[state][ch];                     
 
 			if(recReady){
+				int len = recordBuffer.length();
+				maxRecSizeSeen = (maxRecSizeSeen > len)? maxRecSizeSeen:len;
 				if(!firstRecRead){
 					firstRecRead = true;				
 					expectedColumnCount = size;
@@ -380,7 +418,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
                         	} 
 
 				recReady = false;
-				nextChar = normalisedRead();
+				nextChar = bufferedRead();
 				state = FIELD_START;
 
 				// To deal with edge cases of the form "(...)     \r\n"
@@ -393,6 +431,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				
 				CSVRecord r = new CSVRecord(record, fieldLastIndices, expectedColumnCount);
 				recordBuffer.setLength(0);
+				recordBuffer.ensureCapacity(maxRecSizeSeen);
 				recHistory.setLength(0);
 
 				size = 0;
@@ -408,7 +447,7 @@ public final class CSVReader implements Iterator<CSVRecord>, AutoCloseable{
 				break;
 			}
 			
-			nextChar = normalisedRead();
+			nextChar = bufferedRead();
 		}
 
 		// Flush at EOF
